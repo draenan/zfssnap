@@ -1,0 +1,140 @@
+#!/bin/sh
+#
+# $Id: zfssnap,v 1.1 2012/02/01 10:48:32 e52202 Exp $
+#
+############################################################################
+#
+# zfssnap
+#
+# Usage: zfssnap -p pool -n snapname [-t maxsnaps]
+#
+# This script takes a snapshot of a ZFS pool and all its child
+# filesystems.  If a value is specified for "-t" it will also remove the
+# oldest snapshots until there are "t" snapshots left (oldest to newest.)
+#
+# Suggested values for "t": 25 (hourly), 8 (daily), 5 (weekly), 13 (monthly)
+#
+# CURRENTLY UNTESTED ON SOLARIS.
+#
+# Author: Adrian Waters <awaters@draenan.net>
+#
+############################################################################
+
+usage () {
+    echo "Usage: ${0##*/} -p pool -n snapname [-t maxsnaps]" >&2
+    exit 1
+}
+
+if [ $(/usr/bin/id -u) -ne "0" ]; then
+    echo "You need to be root." >&2
+    exit 1
+fi    
+
+case $(/usr/bin/uname -s) in
+    FreeBSD)
+        GREP=/usr/bin/grep
+        ZFS=/sbin/zfs
+        DATE=/bin/date
+        WC=/usr/bin/wc
+        AWK=/usr/bin/awk
+        ;;
+    SunOS)
+        GREP=/usr/xpg4/bin/grep
+        ZFS=/sbin/zfs
+        DATE=/usr/bin/date
+        WC=/usr/bin/wc
+        AWK=/usr/xpg4/bin/awk
+        ;;
+    *)
+        echo "${0##*/}: FreeBSD or Solaris only." >&2
+        exit 1
+        ;;
+esac        
+
+if [ "$#" -lt 4 ]; then
+    usage
+fi    
+
+pool= snapname= maxsnaps=
+
+while getopts :p:n:t: opt; do
+    case $opt in
+        p)
+            pool=$OPTARG
+            ;;
+        n)
+            snapname=$OPTARG
+            ;;
+        t)
+            maxsnaps=$OPTARG
+            ;;
+        '?')
+            usage
+            ;;
+    esac        
+done
+
+echo $pool | $GREP -E '^(c[0-9].*|mirror|raidz|spare|log)$|[^-_.[:alnum:]]' > /dev/null 2>&1
+if [ "$?" -eq "0" ]; then
+    echo "${0##*/}: \"$pool\" is not a valid ZFS pool name." >&2
+    exit 1
+fi    
+
+mounted=$($ZFS get -H -o value mounted $pool 2>/dev/null)
+
+if [ "$?" -ne "0" ]; then
+    echo "i${0##*/}: ZFS pool \"$pool\" does not exist (unknown dataset)." >&2
+    exit 1
+fi    
+
+if [ "X$mounted" == "Xno" ]; then
+    echo "${0##*/}: ZFS pool \"$pool\" is not mounted."
+    exit 1
+fi    
+
+echo $snapname | $GREP -E '[^-_.:[:alnum:]]' > /dev/null 2>&1
+if [ "$?" -eq "0" ]; then
+    echo "${0##*/}: \"$snapname\" is not a valid ZFS snapshot name." >&2
+    exit 1
+fi    
+
+if [ ! -z $maxsnaps ]; then
+    echo $maxsnaps | $GREP -E '[^[:digit:]]|^0$' > /dev/null 2>&1
+    if [ "$?" -eq "0" ]; then
+        echo "${0##*/}: \"$maxsnaps\" is not a valid number greater than 0." >&2
+        exit 1
+    fi    
+fi
+
+newsnap=${pool}@${snapname}.$($DATE +%Y%m%d_%H:%M)
+$ZFS list -t snapshot -H -o name $newsnap >/dev/null 2>&1 
+if [ "$?" -eq "0" ]; then
+    echo "${0##*/}: Snapshot \"$newsnap\" already exists.  Exiting." >&2
+    exit 1
+fi   
+
+$ZFS snapshot -r $newsnap
+if [ "$?" -ne "0" ]; then
+    echo "${0##*/}: Error occurred taking snapshot. Exiting."
+    exit 1
+fi   
+if [ ! -z $maxsnaps ]; then
+    snapshots=$($ZFS list -r -t snapshot -H -o name -s creation $pool | $GREP "^${pool}@${snapname}\.")
+    numsnaps=$(echo $snapshots | $WC -w | $AWK '{ print $1 }')
+    if [ "$numsnaps" -gt "$maxsnaps" ]; then
+        rmsnaps=$((numsnaps - maxsnaps))
+        for snapshot in $snapshots; do
+            $ZFS destroy -r $snapshot
+            if [ "$?" -ne "0" ]; then
+                echo "${0##*/}: Error when deleting old snapshot \"$snapshot\". Exiting."
+                exit 1;
+            fi    
+            rmsnaps=$((rmsnaps -= 1))
+            if [ "$rmsnaps" -lt "1" ]; then
+                break
+            fi
+        done
+     fi   
+fi    
+exit
+# vi: set tabstop=4 shiftwidth=4 expandtab si ai nu:
