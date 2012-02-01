@@ -1,14 +1,14 @@
 #!/bin/sh
 #
-# $Id: zfssnap,v 1.1 2012/02/01 10:48:32 e52202 Exp $
+# $Id: zfssnap,v 1.2 2012/02/01 11:44:23 e52202 Exp $
 #
 ############################################################################
 #
 # zfssnap
 #
-# Usage: zfssnap -p pool -n snapname [-t maxsnaps]
+# Usage: zfssnap -p pool|filesystem -n snapname [-t maxsnaps]
 #
-# This script takes a snapshot of a ZFS pool and all its child
+# This script takes a snapshot of a ZFS pool/filesystem and all its child
 # filesystems.  If a value is specified for "-t" it will also remove the
 # oldest snapshots until there are "t" snapshots left (oldest to newest.)
 #
@@ -27,7 +27,6 @@ usage () {
 
 if [ $(/usr/bin/id -u) -ne "0" ]; then
     echo "You need to be root." >&2
-    exit 1
 fi    
 
 case $(/usr/bin/uname -s) in
@@ -55,12 +54,17 @@ if [ "$#" -lt 4 ]; then
     usage
 fi    
 
-pool= snapname= maxsnaps=
+pool_fs= pool= fs= snapname= maxsnaps=
 
 while getopts :p:n:t: opt; do
     case $opt in
         p)
-            pool=$OPTARG
+            pool_fs=$OPTARG
+            pool=${OPTARG%%/*}
+            echo $pool_fs | $GREP -E '/' > /dev/null 2>&1
+            if [ "$?" -eq "0" ]; then
+                fs=${OPTARG#*/}
+            fi    
             ;;
         n)
             snapname=$OPTARG
@@ -80,15 +84,23 @@ if [ "$?" -eq "0" ]; then
     exit 1
 fi    
 
-mounted=$($ZFS get -H -o value mounted $pool 2>/dev/null)
+if [ ! -z $fs ]; then
+    echo $fs | $GREP -E '[^/-_.:[:alnum:]]' > /dev/null 2>&1
+    if [ "$?" -eq "0" ]; then
+        echo "${0##*/}: \"$pool_fs\" is not a valid ZFS filesystem name." >&2
+        exit 1
+    fi
+fi    
+
+mounted=$($ZFS get -H -o value mounted $pool_fs 2>/dev/null)
 
 if [ "$?" -ne "0" ]; then
-    echo "i${0##*/}: ZFS pool \"$pool\" does not exist (unknown dataset)." >&2
+    echo "${0##*/}: ZFS pool/filesystem \"$pool_fs\" does not exist." >&2
     exit 1
 fi    
 
 if [ "X$mounted" == "Xno" ]; then
-    echo "${0##*/}: ZFS pool \"$pool\" is not mounted."
+    echo "${0##*/}: ZFS pool/filesystem \"$pool_fs\" is not mounted." >&2
     exit 1
 fi    
 
@@ -106,7 +118,7 @@ if [ ! -z $maxsnaps ]; then
     fi    
 fi
 
-newsnap=${pool}@${snapname}.$($DATE +%Y%m%d_%H:%M)
+newsnap=${pool_fs}@${snapname}.$($DATE +%Y%m%d_%H:%M)
 $ZFS list -t snapshot -H -o name $newsnap >/dev/null 2>&1 
 if [ "$?" -eq "0" ]; then
     echo "${0##*/}: Snapshot \"$newsnap\" already exists.  Exiting." >&2
@@ -119,7 +131,7 @@ if [ "$?" -ne "0" ]; then
     exit 1
 fi   
 if [ ! -z $maxsnaps ]; then
-    snapshots=$($ZFS list -r -t snapshot -H -o name -s creation $pool | $GREP "^${pool}@${snapname}\.")
+    snapshots=$($ZFS list -r -t snapshot -H -o name -s creation $pool_fs | $GREP "^${pool_fs}@${snapname}\.")
     numsnaps=$(echo $snapshots | $WC -w | $AWK '{ print $1 }')
     if [ "$numsnaps" -gt "$maxsnaps" ]; then
         rmsnaps=$((numsnaps - maxsnaps))
