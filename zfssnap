@@ -1,12 +1,12 @@
 #!/bin/sh -
 #
-# $Id: zfssnap,v 1.3 2012/02/02 10:43:25 e52202 Exp $
+# $Id: zfssnap,v 1.4 2012/02/02 10:48:21 e52202 Exp $
 #
 ############################################################################
 #
 # zfssnap
 #
-# Usage: zfssnap -n snapname [-t maxsnaps] filesystem
+# Usage: zfssnap -s snapname [-n maxsnaps] filesystem
 #
 # This script takes a snapshot of a ZFS filesystem and all its child
 # filesystems.  If a value is specified for "-t" it will also remove the
@@ -27,7 +27,7 @@ PATH=/bin:/usr/bin
 progname=${0##*/}
 
 usage () {
-    echo "Usage: $progname -n snapname [-t maxsnaps] filesystem" >&2
+    echo "Usage: $progname -s snapname [-n maxsnaps] filesystem" >&2
     exit 1
 }
 
@@ -66,12 +66,12 @@ fi
 
 pool_fs= pool= fs= snapname= maxsnaps=
 
-while getopts :n:t: opt; do
+while getopts :s:n: opt; do
     case $opt in
-        n)
+        s)
             snapname=$OPTARG
             ;;
-        t)
+        n)
             maxsnaps=$OPTARG
             ;;
         '?')
