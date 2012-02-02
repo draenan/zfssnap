@@ -1,14 +1,14 @@
-#!/bin/sh
+#!/bin/sh -
 #
-# $Id: zfssnap,v 1.2 2012/02/01 11:44:23 e52202 Exp $
+# $Id: zfssnap,v 1.3 2012/02/02 10:43:25 e52202 Exp $
 #
 ############################################################################
 #
 # zfssnap
 #
-# Usage: zfssnap -p pool|filesystem -n snapname [-t maxsnaps]
+# Usage: zfssnap -n snapname [-t maxsnaps] filesystem
 #
-# This script takes a snapshot of a ZFS pool/filesystem and all its child
+# This script takes a snapshot of a ZFS filesystem and all its child
 # filesystems.  If a value is specified for "-t" it will also remove the
 # oldest snapshots until there are "t" snapshots left (oldest to newest.)
 #
@@ -20,17 +20,21 @@
 #
 ############################################################################
 
+IFS=' 	
+'
+PATH=/bin:/usr/bin
+
+progname=${0##*/}
+
 usage () {
-    echo "Usage: ${0##*/} -p pool -n snapname [-t maxsnaps]" >&2
+    echo "Usage: $progname -n snapname [-t maxsnaps] filesystem" >&2
     exit 1
 }
 
-if [ $(/usr/bin/id -u) -ne "0" ]; then
-    echo "You need to be root." >&2
-fi    
 
 case $(/usr/bin/uname -s) in
     FreeBSD)
+        ID=/usr/bin/id
         GREP=/usr/bin/grep
         ZFS=/sbin/zfs
         DATE=/bin/date
@@ -38,6 +42,7 @@ case $(/usr/bin/uname -s) in
         AWK=/usr/bin/awk
         ;;
     SunOS)
+        ID=/usr/xpg4/bin/id
         GREP=/usr/xpg4/bin/grep
         ZFS=/sbin/zfs
         DATE=/usr/bin/date
@@ -45,27 +50,24 @@ case $(/usr/bin/uname -s) in
         AWK=/usr/xpg4/bin/awk
         ;;
     *)
-        echo "${0##*/}: FreeBSD or Solaris only." >&2
+        echo "$progname: FreeBSD or Solaris only." >&2
         exit 1
         ;;
 esac        
 
-if [ "$#" -lt 4 ]; then
+if [ "$#" -lt 3 ]; then
     usage
+fi    
+
+if [ $($ID -u) -ne "0" ]; then
+    echo "You need to be root." >&2
+    exit 1
 fi    
 
 pool_fs= pool= fs= snapname= maxsnaps=
 
-while getopts :p:n:t: opt; do
+while getopts :n:t: opt; do
     case $opt in
-        p)
-            pool_fs=$OPTARG
-            pool=${OPTARG%%/*}
-            echo $pool_fs | $GREP -E '/' > /dev/null 2>&1
-            if [ "$?" -eq "0" ]; then
-                fs=${OPTARG#*/}
-            fi    
-            ;;
         n)
             snapname=$OPTARG
             ;;
@@ -78,42 +80,61 @@ while getopts :p:n:t: opt; do
     esac        
 done
 
+shift $((OPTIND - 1))
+
+if [ -z "$1" ]; then
+	usage
+fi
+
+pool_fs=$1
+pool=${pool_fs%%/*}
+fs=${pool_fs#*/}
+if [ "X$fs" == "X$pool" ]; then
+	fs=
+fi	
+
+echo $pool_fs | $GREP -E '^/|/$'
+if [ "$?" -eq "0" ]; then
+	echo "$progname: Cannot create snapshot: leading or trailing slash in \"$pool_fs\"." >&2
+	exit 1
+fi
+
+if [ -z "$pool" ]; then
+	echo "$progname: Cannot create snapshot: leading slash in \"$pool_fs\"." >&2
+	exit 1
+fi	
+
 echo $pool | $GREP -E '^(c[0-9].*|mirror|raidz|spare|log)$|[^-_.[:alnum:]]' > /dev/null 2>&1
 if [ "$?" -eq "0" ]; then
-    echo "${0##*/}: \"$pool\" is not a valid ZFS pool name." >&2
+    echo "$progname: \"$pool\" is not a valid ZFS pool name." >&2
     exit 1
 fi    
 
-if [ ! -z $fs ]; then
-    echo $fs | $GREP -E '[^/-_.:[:alnum:]]' > /dev/null 2>&1
+if [ ! -z "$fs" ]; then
+    echo $fs | $GREP -E '[^-_/.:[:alnum:]]' > /dev/null 2>&1
     if [ "$?" -eq "0" ]; then
-        echo "${0##*/}: \"$pool_fs\" is not a valid ZFS filesystem name." >&2
+        echo "$progname: \"$pool_fs\" is not a valid ZFS filesystem name." >&2
         exit 1
     fi
-fi    
+fi
 
-mounted=$($ZFS get -H -o value mounted $pool_fs 2>/dev/null)
+$ZFS list -H -o name $pool_fs > /dev/null 2>&1
 
 if [ "$?" -ne "0" ]; then
-    echo "${0##*/}: ZFS pool/filesystem \"$pool_fs\" does not exist." >&2
-    exit 1
-fi    
-
-if [ "X$mounted" == "Xno" ]; then
-    echo "${0##*/}: ZFS pool/filesystem \"$pool_fs\" is not mounted." >&2
+    echo "$progname: ZFS filesystem \"$pool_fs\" does not exist." >&2
     exit 1
 fi    
 
 echo $snapname | $GREP -E '[^-_.:[:alnum:]]' > /dev/null 2>&1
 if [ "$?" -eq "0" ]; then
-    echo "${0##*/}: \"$snapname\" is not a valid ZFS snapshot name." >&2
+    echo "$progname: \"$snapname\" is not a valid ZFS snapshot name." >&2
     exit 1
 fi    
 
-if [ ! -z $maxsnaps ]; then
+if [ ! -z "$maxsnaps" ]; then
     echo $maxsnaps | $GREP -E '[^[:digit:]]|^0$' > /dev/null 2>&1
     if [ "$?" -eq "0" ]; then
-        echo "${0##*/}: \"$maxsnaps\" is not a valid number greater than 0." >&2
+        echo "$progname: \"$maxsnaps\" is not a valid number greater than 0." >&2
         exit 1
     fi    
 fi
@@ -121,16 +142,16 @@ fi
 newsnap=${pool_fs}@${snapname}.$($DATE +%Y%m%d_%H:%M)
 $ZFS list -t snapshot -H -o name $newsnap >/dev/null 2>&1 
 if [ "$?" -eq "0" ]; then
-    echo "${0##*/}: Snapshot \"$newsnap\" already exists.  Exiting." >&2
+    echo "$progname: Snapshot \"$newsnap\" already exists.  Exiting." >&2
     exit 1
 fi   
 
 $ZFS snapshot -r $newsnap
 if [ "$?" -ne "0" ]; then
-    echo "${0##*/}: Error occurred taking snapshot. Exiting."
+    echo "$progname: Error occurred taking snapshot. Exiting."
     exit 1
 fi   
-if [ ! -z $maxsnaps ]; then
+if [ ! -z "$maxsnaps" ]; then
     snapshots=$($ZFS list -r -t snapshot -H -o name -s creation $pool_fs | $GREP "^${pool_fs}@${snapname}\.")
     numsnaps=$(echo $snapshots | $WC -w | $AWK '{ print $1 }')
     if [ "$numsnaps" -gt "$maxsnaps" ]; then
@@ -138,7 +159,7 @@ if [ ! -z $maxsnaps ]; then
         for snapshot in $snapshots; do
             $ZFS destroy -r $snapshot
             if [ "$?" -ne "0" ]; then
-                echo "${0##*/}: Error when deleting old snapshot \"$snapshot\". Exiting."
+                echo "$progname: Error when deleting old snapshot \"$snapshot\". Exiting."
                 exit 1;
             fi    
             rmsnaps=$((rmsnaps -= 1))
@@ -149,4 +170,4 @@ if [ ! -z $maxsnaps ]; then
      fi   
 fi    
 exit
-# vi: set tabstop=4 shiftwidth=4 expandtab si ai nu:
+# vi: set tabstop=4 shiftwidth=4 si ai nu:
