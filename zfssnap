@@ -1,6 +1,6 @@
 #!/bin/sh -
 #
-# $Id: zfssnap,v 1.4 2012/02/02 10:48:21 e52202 Exp $
+# $Id: zfssnap,v 1.5 2012/02/03 07:09:43 e52202 Exp $
 #
 ############################################################################
 #
@@ -139,7 +139,7 @@ if [ ! -z "$maxsnaps" ]; then
     fi    
 fi
 
-newsnap=${pool_fs}@${snapname}.$($DATE +%Y%m%d_%H:%M)
+newsnap=${pool_fs}@${snapname}.$($DATE +%Y%m%d_%H%M)
 $ZFS list -t snapshot -H -o name $newsnap >/dev/null 2>&1 
 if [ "$?" -eq "0" ]; then
     echo "$progname: Snapshot \"$newsnap\" already exists.  Exiting." >&2
