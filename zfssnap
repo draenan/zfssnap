@@ -1,6 +1,6 @@
 #!/bin/sh -
 #
-# $Id: zfssnap,v 1.5 2012/02/03 07:09:43 e52202 Exp $
+# $Id: zfssnap,v 1.6 2012/02/10 08:23:50 e52202 Exp $
 #
 ############################################################################
 #
@@ -38,7 +38,6 @@ case $(/usr/bin/uname -s) in
         GREP=/usr/bin/grep
         ZFS=/sbin/zfs
         DATE=/bin/date
-        WC=/usr/bin/wc
         AWK=/usr/bin/awk
         ;;
     SunOS)
@@ -46,7 +45,6 @@ case $(/usr/bin/uname -s) in
         GREP=/usr/xpg4/bin/grep
         ZFS=/sbin/zfs
         DATE=/usr/bin/date
-        WC=/usr/bin/wc
         AWK=/usr/xpg4/bin/awk
         ;;
     *)
@@ -153,7 +151,7 @@ if [ "$?" -ne "0" ]; then
 fi   
 if [ ! -z "$maxsnaps" ]; then
     snapshots=$($ZFS list -r -t snapshot -H -o name -s creation $pool_fs | $GREP "^${pool_fs}@${snapname}\.")
-    numsnaps=$(echo $snapshots | $WC -w | $AWK '{ print $1 }')
+    numsnaps=$(echo $snapshots | $AWK '{ print NF }')
     if [ "$numsnaps" -gt "$maxsnaps" ]; then
         rmsnaps=$((numsnaps - maxsnaps))
         for snapshot in $snapshots; do
