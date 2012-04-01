@@ -1,6 +1,6 @@
 #!/bin/sh -
 #
-# $Id: zfssnap,v 1.6 2012/02/10 08:23:50 e52202 Exp $
+# $Id: zfssnap,v 1.7 2012/04/01 16:02:56 awaters Exp $
 #
 ############################################################################
 #
@@ -31,6 +31,7 @@ usage () {
     exit 1
 }
 
+# Should work on Solaris, but untested as of this version.
 
 case $(/usr/bin/uname -s) in
     FreeBSD)
@@ -53,6 +54,8 @@ case $(/usr/bin/uname -s) in
         ;;
 esac        
 
+# Ensure we have the correct number of arguments, and are running as root.
+
 if [ "$#" -lt 3 ]; then
     usage
 fi    
@@ -61,6 +64,8 @@ if [ $($ID -u) -ne "0" ]; then
     echo "You need to be root." >&2
     exit 1
 fi    
+
+# Gather the arguments.
 
 pool_fs= pool= fs= snapname= maxsnaps=
 
@@ -80,9 +85,14 @@ done
 
 shift $((OPTIND - 1))
 
+# Check that the filesystem name was provided.
+
 if [ -z "$1" ]; then
 	usage
 fi
+
+# Extract pool (everything before the first '/') and filesystem name 
+# (everything after it) from the user input.
 
 pool_fs=$1
 pool=${pool_fs%%/*}
@@ -90,6 +100,10 @@ fs=${pool_fs#*/}
 if [ "X$fs" == "X$pool" ]; then
 	fs=
 fi	
+
+# Next few lines sanitizes user input to ensure that the input is in an
+# expected format and satisfies the naming conventions for pools and
+# filesystems/snapshots. Also checks that the filesystem actually exists.
 
 echo $pool_fs | $GREP -E '^/|/$'
 if [ "$?" -eq "0" ]; then
@@ -102,15 +116,14 @@ if [ -z "$pool" ]; then
 	exit 1
 fi	
 
-echo $pool | $GREP -E '^(c[0-9].*|mirror|raidz|spare|log)$|[^-_.[:alnum:]]' > /dev/null 2>&1
-if [ "$?" -eq "0" ]; then
+echo $pool | $GREP -E '^[[:alpha:]]' | $GREP -Ev '^(c[0-9].*|mirror|raidz|spare|log)$|[^-_.[:alnum:]]' > /dev/null 2>&1
+if [ "$?" -eq "1" ]; then
     echo "$progname: \"$pool\" is not a valid ZFS pool name." >&2
     exit 1
 fi    
-
 if [ ! -z "$fs" ]; then
-    echo $fs | $GREP -E '[^-_/.:[:alnum:]]' > /dev/null 2>&1
-    if [ "$?" -eq "0" ]; then
+    echo $fs | $GREP -E '^[[:alnum:]]' | $GREP -Ev '[^-_/.:[:alnum:]]' > /dev/null 2>&1
+    if [ "$?" -eq "1" ]; then
         echo "$progname: \"$pool_fs\" is not a valid ZFS filesystem name." >&2
         exit 1
     fi
@@ -123,8 +136,8 @@ if [ "$?" -ne "0" ]; then
     exit 1
 fi    
 
-echo $snapname | $GREP -E '[^-_.:[:alnum:]]' > /dev/null 2>&1
-if [ "$?" -eq "0" ]; then
+echo $snapname | $GREP -E '^[[:alnum:]]' | $GREP -Ev '[^-_.:[:alnum:]]' > /dev/null 2>&1
+if [ "$?" -eq "1" ]; then
     echo "$progname: \"$snapname\" is not a valid ZFS snapshot name." >&2
     exit 1
 fi    
@@ -137,6 +150,9 @@ if [ ! -z "$maxsnaps" ]; then
     fi    
 fi
 
+# Generate a new date-based snapshot name and check that a snapshot with
+# that name doesn't already exist.
+
 newsnap=${pool_fs}@${snapname}.$($DATE +%Y%m%d_%H%M)
 $ZFS list -t snapshot -H -o name $newsnap >/dev/null 2>&1 
 if [ "$?" -eq "0" ]; then
@@ -144,11 +160,18 @@ if [ "$?" -eq "0" ]; then
     exit 1
 fi   
 
+# Create the snapshot.
+
 $ZFS snapshot -r $newsnap
 if [ "$?" -ne "0" ]; then
     echo "$progname: Error occurred taking snapshot. Exiting."
     exit 1
 fi   
+
+# If "maxsnaps" was specified, generate a list of snapshots from oldest to
+# newest, then destroy the oldest snapshot, repeating  until there are
+# "maxsnaps" snapshots left.
+
 if [ ! -z "$maxsnaps" ]; then
     snapshots=$($ZFS list -r -t snapshot -H -o name -s creation $pool_fs | $GREP "^${pool_fs}@${snapname}\.")
     numsnaps=$(echo $snapshots | $AWK '{ print NF }')
