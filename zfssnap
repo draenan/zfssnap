@@ -1,6 +1,6 @@
 #!/bin/sh -
 #
-# $Id: zfssnap,v 1.7 2012/04/01 16:02:56 awaters Exp $
+# $Id: zfssnap,v 1.8 2012/05/22 05:36:19 awaters Exp $
 #
 ############################################################################
 #
@@ -14,7 +14,9 @@
 #
 # Suggested values for "t": 25 (hourly), 8 (daily), 5 (weekly), 13 (monthly)
 #
-# CURRENTLY UNTESTED ON SOLARIS.
+# SOLARIS 10 USERS: You *must* replace "/bin/sh" with "/usr/xpg4/bin/sh" at
+#                   line 1, because "/bin/sh" is not POSIX compliant in
+#                   Solaris 10.
 #
 # Author: Adrian Waters <awaters@draenan.net>
 #
@@ -33,8 +35,12 @@ usage () {
 
 # Should work on Solaris, but untested as of this version.
 
-case $(/usr/bin/uname -s) in
+case $( /usr/bin/uname -s ) in
     FreeBSD)
+        if [ $( /usr/bin/uname -r | /usr/bin/cut -d. -f1 ) -lt "8" ]; then
+            echo "FreeBSD 8.0-RELEASE and above only." >&2
+            exit 1
+        fi
         ID=/usr/bin/id
         GREP=/usr/bin/grep
         ZFS=/sbin/zfs
@@ -42,6 +48,11 @@ case $(/usr/bin/uname -s) in
         AWK=/usr/bin/awk
         ;;
     SunOS)
+        if [ $( /usr/bin/uname -r | /usr/bin/cut -d. -f2 ) -lt "10" ]; then
+            echo "Solaris 10 and above only." >&2
+            exit 1
+        fi
+        echo "WARNING: This script has not been tested on Solaris!" >&2
         ID=/usr/xpg4/bin/id
         GREP=/usr/xpg4/bin/grep
         ZFS=/sbin/zfs
@@ -88,7 +99,7 @@ shift $((OPTIND - 1))
 # Check that the filesystem name was provided.
 
 if [ -z "$1" ]; then
-	usage
+    usage
 fi
 
 # Extract pool (everything before the first '/') and filesystem name 
@@ -98,8 +109,8 @@ pool_fs=$1
 pool=${pool_fs%%/*}
 fs=${pool_fs#*/}
 if [ "X$fs" == "X$pool" ]; then
-	fs=
-fi	
+    fs=
+fi  
 
 # Next few lines sanitizes user input to ensure that the input is in an
 # expected format and satisfies the naming conventions for pools and
@@ -107,14 +118,14 @@ fi
 
 echo $pool_fs | $GREP -E '^/|/$'
 if [ "$?" -eq "0" ]; then
-	echo "$progname: Cannot create snapshot: leading or trailing slash in \"$pool_fs\"." >&2
-	exit 1
+    echo "$progname: Cannot create snapshot: leading or trailing slash in \"$pool_fs\"." >&2
+    exit 1
 fi
 
 if [ -z "$pool" ]; then
-	echo "$progname: Cannot create snapshot: leading slash in \"$pool_fs\"." >&2
-	exit 1
-fi	
+    echo "$progname: Cannot create snapshot: leading slash in \"$pool_fs\"." >&2
+    exit 1
+fi  
 
 echo $pool | $GREP -E '^[[:alpha:]]' | $GREP -Ev '^(c[0-9].*|mirror|raidz|spare|log)$|[^-_.[:alnum:]]' > /dev/null 2>&1
 if [ "$?" -eq "1" ]; then
