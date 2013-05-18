@@ -12,10 +12,6 @@
 #
 # Suggested values for "t": 24 (hourly), 7 (daily), 4 (weekly), 12 (monthly)
 #
-# SOLARIS 10 USERS: You *must* replace "/bin/sh" with "/usr/xpg4/bin/sh" at
-#                   line 1, because "/bin/sh" is not POSIX compliant in
-#                   Solaris 10.
-#
 # Author: Adrian Waters <awaters@draenan.net>
 #
 ############################################################################
@@ -31,37 +27,15 @@ usage () {
     exit 1
 }
 
-# Should work on Solaris, but untested as of this version.
-
-case $( /usr/bin/uname -s ) in
-    FreeBSD)
-        if [ $( /usr/bin/uname -r | /usr/bin/cut -d. -f1 ) -lt "8" ]; then
-            echo "FreeBSD 8.0-RELEASE and above only." >&2
-            exit 1
-        fi
-        ID=/usr/bin/id
-        GREP=/usr/bin/grep
-        ZFS=/sbin/zfs
-        DATE=/bin/date
-        AWK=/usr/bin/awk
-        ;;
-    SunOS)
-        if [ $( /usr/bin/uname -r | /usr/bin/cut -d. -f2 ) -lt "10" ]; then
-            echo "Solaris 10 and above only." >&2
-            exit 1
-        fi
-        echo "WARNING: This script has not been tested on Solaris!" >&2
-        ID=/usr/xpg4/bin/id
-        GREP=/usr/xpg4/bin/grep
-        ZFS=/sbin/zfs
-        DATE=/usr/bin/date
-        AWK=/usr/xpg4/bin/awk
-        ;;
-    *)
-        echo "$progname: FreeBSD or Solaris only." >&2
-        exit 1
-        ;;
-esac
+if [ $( /usr/bin/uname -r | /usr/bin/cut -d. -f1 ) -lt "8" ]; then
+    echo "FreeBSD 8.0-RELEASE and above only." >&2
+    exit 1
+fi
+ID=/usr/bin/id
+GREP=/usr/bin/grep
+ZFS=/sbin/zfs
+DATE=/bin/date
+AWK=/usr/bin/awk
 
 # Ensure we have the correct number of arguments, and are running as root.
 
