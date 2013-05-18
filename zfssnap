@@ -1,7 +1,5 @@
 #!/bin/sh -
 #
-# $Id: zfssnap,v 1.8 2012/05/22 05:36:19 awaters Exp $
-#
 ############################################################################
 #
 # zfssnap
@@ -12,7 +10,7 @@
 # filesystems.  If a value is specified for "-t" it will also remove the
 # oldest snapshots until there are "t" snapshots left (oldest to newest.)
 #
-# Suggested values for "t": 25 (hourly), 8 (daily), 5 (weekly), 13 (monthly)
+# Suggested values for "t": 24 (hourly), 7 (daily), 4 (weekly), 12 (monthly)
 #
 # SOLARIS 10 USERS: You *must* replace "/bin/sh" with "/usr/xpg4/bin/sh" at
 #                   line 1, because "/bin/sh" is not POSIX compliant in
@@ -63,18 +61,18 @@ case $( /usr/bin/uname -s ) in
         echo "$progname: FreeBSD or Solaris only." >&2
         exit 1
         ;;
-esac        
+esac
 
 # Ensure we have the correct number of arguments, and are running as root.
 
 if [ "$#" -lt 3 ]; then
     usage
-fi    
+fi
 
 if [ $($ID -u) -ne "0" ]; then
     echo "You need to be root." >&2
     exit 1
-fi    
+fi
 
 # Gather the arguments.
 
@@ -91,7 +89,7 @@ while getopts :s:n: opt; do
         '?')
             usage
             ;;
-    esac        
+    esac
 done
 
 shift $((OPTIND - 1))
@@ -102,7 +100,7 @@ if [ -z "$1" ]; then
     usage
 fi
 
-# Extract pool (everything before the first '/') and filesystem name 
+# Extract pool (everything before the first '/') and filesystem name
 # (everything after it) from the user input.
 
 pool_fs=$1
@@ -110,7 +108,7 @@ pool=${pool_fs%%/*}
 fs=${pool_fs#*/}
 if [ "X$fs" == "X$pool" ]; then
     fs=
-fi  
+fi
 
 # Next few lines sanitizes user input to ensure that the input is in an
 # expected format and satisfies the naming conventions for pools and
@@ -125,13 +123,13 @@ fi
 if [ -z "$pool" ]; then
     echo "$progname: Cannot create snapshot: leading slash in \"$pool_fs\"." >&2
     exit 1
-fi  
+fi
 
 echo $pool | $GREP -E '^[[:alpha:]]' | $GREP -Ev '^(c[0-9].*|mirror|raidz|spare|log)$|[^-_.[:alnum:]]' > /dev/null 2>&1
 if [ "$?" -eq "1" ]; then
     echo "$progname: \"$pool\" is not a valid ZFS pool name." >&2
     exit 1
-fi    
+fi
 if [ ! -z "$fs" ]; then
     echo $fs | $GREP -E '^[[:alnum:]]' | $GREP -Ev '[^-_/.:[:alnum:]]' > /dev/null 2>&1
     if [ "$?" -eq "1" ]; then
@@ -145,31 +143,31 @@ $ZFS list -H -o name $pool_fs > /dev/null 2>&1
 if [ "$?" -ne "0" ]; then
     echo "$progname: ZFS filesystem \"$pool_fs\" does not exist." >&2
     exit 1
-fi    
+fi
 
 echo $snapname | $GREP -E '^[[:alnum:]]' | $GREP -Ev '[^-_.:[:alnum:]]' > /dev/null 2>&1
 if [ "$?" -eq "1" ]; then
     echo "$progname: \"$snapname\" is not a valid ZFS snapshot name." >&2
     exit 1
-fi    
+fi
 
 if [ ! -z "$maxsnaps" ]; then
     echo $maxsnaps | $GREP -E '[^[:digit:]]|^0$' > /dev/null 2>&1
     if [ "$?" -eq "0" ]; then
         echo "$progname: \"$maxsnaps\" is not a valid number greater than 0." >&2
         exit 1
-    fi    
+    fi
 fi
 
 # Generate a new date-based snapshot name and check that a snapshot with
 # that name doesn't already exist.
 
 newsnap=${pool_fs}@${snapname}.$($DATE +%Y%m%d_%H%M)
-$ZFS list -t snapshot -H -o name $newsnap >/dev/null 2>&1 
+$ZFS list -t snapshot -H -o name $newsnap >/dev/null 2>&1
 if [ "$?" -eq "0" ]; then
     echo "$progname: Snapshot \"$newsnap\" already exists.  Exiting." >&2
     exit 1
-fi   
+fi
 
 # Create the snapshot.
 
@@ -177,7 +175,7 @@ $ZFS snapshot -r $newsnap
 if [ "$?" -ne "0" ]; then
     echo "$progname: Error occurred taking snapshot. Exiting."
     exit 1
-fi   
+fi
 
 # If "maxsnaps" was specified, generate a list of snapshots from oldest to
 # newest, then destroy the oldest snapshot, repeating  until there are
@@ -193,13 +191,12 @@ if [ ! -z "$maxsnaps" ]; then
             if [ "$?" -ne "0" ]; then
                 echo "$progname: Error when deleting old snapshot \"$snapshot\". Exiting."
                 exit 1;
-            fi    
+            fi
             rmsnaps=$((rmsnaps -= 1))
             if [ "$rmsnaps" -lt "1" ]; then
                 break
             fi
         done
-     fi   
-fi    
+     fi
+fi
 exit
-# vi: set tabstop=4 shiftwidth=4 si ai nu:
